@@ -1,1 +1,1 @@
-cls & uvicorn backend.manage:app --reload
+cls & uvicorn backend.manage:app --reload --host 0.0.0.0 --port 8000

@@ -1,71 +1,43 @@
-from pydantic.main import BaseModel
-
-from fastapi import FastAPI, Depends, Path, HTTPException
-from sqlalchemy.orm import Session
-from . import models
-from . import database
-
-class HelloWorldRequest(BaseModel):
-    name: str
-    age: int
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+from fastapi_jwt_auth import AuthJWT
+from fastapi_jwt_auth.exceptions import AuthJWTException
+from pydantic import BaseModel
+from fastapi.staticfiles import StaticFiles
+from .routers import web, users, items, links
+from starlette.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
-@app.get(path="/")
-async def hello():
-    return "hello world" 
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
-@app.get(path="/hello/{name}")
-async def hello_with_name(name: str):
-    return "hello with name. your name is " + name
+app.add_middleware(
+  CORSMiddleware,
+  allow_origins=["*"],
+  allow_credentials=True,
+  allow_methods=["*"],
+  allow_headers=["*"],
+)
 
-@app.get(path="/hello/query/")
-async def hello_with_querystring(name: str):
-    return "hello with name. your name is " + name
+class Settings(BaseModel):
+  authjwt_secret_key: str = "secret"
+  # Configure application to store and get JWT from cookies
+  authjwt_token_location: set = {"cookies"}
+  # Disable CSRF Protection for this example. default is True
+  authjwt_cookie_csrf_protect: bool = False
 
-@app.post(path="/hello/post")
-async def hello_post(request: HelloWorldRequest):
-    return "hello with post. your name: {}, your age: {}".format(request.name, request.age)
+@AuthJWT.load_config
+def get_config():
+  return Settings()
 
-@app.get(path="/api/v1/users/{user_id}")
-def get_place(
-        user_id: int,
-        db: Session = Depends(database.get_db)):
-    result = db.query(models.User).filter(models.User.id == user_id).first()
+@app.exception_handler(AuthJWTException)
+def authjwt_exception_handler(request: Request, exc: AuthJWTException):
+  return JSONResponse(
+    status_code=exc.status_code,
+    content={"detail": exc.message}
+  )
 
-    if result is None:
-        raise HTTPException(status_code=404, detail="ID에 해당하는 User가 없습니다.")
-
-    return {
-        "status": "OK",
-        "data": result
-    }
-
-@app.get(path="/api/v1/links/")
-def get_links(
-        db: Session = Depends(database.get_db)):
-    result = db.query(models.Links).first()
-    print(len(result))
-
-    if result is None:
-        raise HTTPException(status_code=404, detail="ID에 해당하는 links가 없습니다.")
-
-    return {
-        "status": "OK",
-        "data": result
-    }
-
-
-@app.get(path="/api/v1/links2/")
-def get_links(
-        db: Session = Depends(database.get_db)):
-    result = db.query(models.Links).limit(10).all()
-    print(len(result))
-
-    if result is None:
-        raise HTTPException(status_code=404, detail="ID에 해당하는 links가 없습니다.")
-
-    return {
-        "status": "OK",
-        "data": result
-    }
+app.include_router(web.router,tags=['web'])
+app.include_router(users.router,tags=['users'])
+app.include_router(items.router,tags=['items'])
+app.include_router(links.router,tags=['links'])
